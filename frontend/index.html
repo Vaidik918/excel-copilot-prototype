@@ -1,0 +1,40 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Copilot - Phase 0</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Excel Copilot</h1>
+            <p>Phase 0 - Development Setup</p>
+        </header>
+
+        <main>
+            <section id="status">
+                <h2>System Status</h2>
+                <div id="statusContainer">Loading...</div>
+            </section>
+
+            <section id="upload">
+                <h2>Upload Test</h2>
+                <input type="file" id="fileInput" accept=".xlsx,.xls">
+                <button onclick="testFileInput()">Test File Upload</button>
+                <div id="uploadStatus"></div>
+            </section>
+
+            <section id="api-test">
+                <h2>API Test</h2>
+                <button onclick="testHealthEndpoint()">Test /health Endpoint</button>
+                <pre id="apiResponse"></pre>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
