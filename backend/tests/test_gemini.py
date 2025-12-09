@@ -1,10 +1,13 @@
-import google.generativeai as genai
+import unittest
+from core.gemini_handler import GeminiHandler, test_gemini_connection
 
-# Set API key
-api_key = "AIzaSyD5BOeMyAVoFtWFtKBaZR2U9s1Qzuaw_Xw"  # Paste your key
-genai.configure(api_key=api_key)
+class TestGeminiHandler(unittest.TestCase):
+    """Test Gemini Handler."""
+    
+    def test_api_connection(self):
+        """Test Gemini API connection."""
+        result = test_gemini_connection()
+        self.assertIsNotNone(result)
 
-# Test connection
-model = genai.GenerativeModel('gemini-2.5-flash')
-response = model.generate_content("Say 'Gemini is working!'")
-print("✅ SUCCESS:", response.text)
+if __name__ == '__main__':
+    unittest.main()
