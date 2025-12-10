@@ -16,11 +16,19 @@ class CodeExecutor:
     """Execute pandas code safely with restricted namespace."""
     
     # Allowed operations (whitelist approach)
-    ALLOWED_BUILTINS = {
-        'len', 'str', 'int', 'float', 'bool', 'list', 'dict', 'set',
-        'tuple', 'range', 'enumerate', 'zip', 'map', 'filter',
-        'sum', 'min', 'max', 'sorted', 'abs', 'round'
-    }
+    ALLOWED_BUILTINS = [
+    # Common functions
+    'len', 'str', 'int', 'float', 'bool', 'list', 'dict', 'set',
+    'tuple', 'range', 'enumerate', 'zip', 'map', 'filter',
+    'sum', 'min', 'max', 'sorted', 'abs', 'round',
+    'all', 'any', 'isinstance', 'type',  # NEW additions
+    
+    # Exceptions
+    'KeyError', 'ValueError', 'TypeError', 'IndexError',
+    'AttributeError', 'RuntimeError', 'Exception',
+    'NameError', 'ZeroDivisionError',
+    ]
+
     
     # Forbidden patterns in code
     FORBIDDEN_PATTERNS = [

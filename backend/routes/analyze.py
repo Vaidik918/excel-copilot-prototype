@@ -4,7 +4,6 @@ Phase 1: Generate pandas code from user prompts
 """
 
 from flask import Blueprint, request, jsonify
-from typing import Dict, Any
 from core.gemini_handler import GeminiHandler
 from core.code_executor import CodeExecutor
 from utils.session_manager import session_manager
@@ -13,7 +12,6 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 analyze_bp = Blueprint('analyze', __name__, url_prefix='/api')
 
-# Initialize services
 gemini_handler = GeminiHandler()
 executor = CodeExecutor()
 
@@ -27,8 +25,19 @@ def analyze():
     {
         'session_id': str,
         'file_id': str,
-        'sheet_name': str (optional),
+        'sheet_name': str (optional, defaults to first sheet),
         'prompt': str (user instruction)
+    }
+    
+    Returns:
+    {
+        'success': bool,
+        'code': Generated pandas code,
+        'explanation': What will happen,
+        'risks': [Risk warnings],
+        'estimated_rows_affected': Estimate,
+        'code_valid': bool (syntax check),
+        'error': Error if failed
     }
     """
     try:
@@ -36,14 +45,22 @@ def analyze():
         
         # Get request data
         data = request.get_json()
+        
         if not data:
-            return jsonify({'success': False, 'error': 'No JSON data provided'}), 400
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
         
         # Validate required fields
         required_fields = ['session_id', 'file_id', 'prompt']
         for field in required_fields:
             if not data.get(field):
-                return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+                logger.warning(f"Missing field: {field}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
         
         session_id = data['session_id']
         file_id = data['file_id']
@@ -55,22 +72,37 @@ def analyze():
         # Get session
         session = session_manager.get_session(session_id)
         if not session:
-            return jsonify({'success': False, 'error': 'Session not found'}), 404
+            logger.warning(f"Session not found: {session_id}")
+            return jsonify({
+                'success': False,
+                'error': 'Session not found'
+            }), 404
         
         # Get file from session
         if file_id not in session['files']:
-            return jsonify({'success': False, 'error': 'File not found in session'}), 404
+            logger.warning(f"File not in session: {file_id}")
+            return jsonify({
+                'success': False,
+                'error': 'File not found in session'
+            }), 404
         
         # Get DataFrame info
-        file_info = session['files'][file_id]
-        dataframe_info = file_info.get('dataframe_info')
+        dataframe_info = session['files'][file_id]['dataframe_info']
         if not dataframe_info:
-            return jsonify({'success': False, 'error': 'DataFrame info not available'}), 400
+            return jsonify({
+                'success': False,
+                'error': 'DataFrame info not available'
+            }), 400
         
-        # Generate code with Gemini
-        gen_result = gemini_handler.generate_code(prompt, dataframe_info, sheet_name or 'Sheet1')
+        # Use provided sheet or default
+        if not sheet_name:
+            sheet_name = dataframe_info.get('sheets', ['Sheet1'])[0]
+        
+        # Generate code
+        gen_result = gemini_handler.generate_code(prompt, dataframe_info, sheet_name)
         
         if not gen_result['success']:
+            logger.warning(f"Code generation failed: {gen_result['error']}")
             return jsonify({
                 'success': False,
                 'error': gen_result['error']
@@ -78,19 +110,31 @@ def analyze():
         
         code = gen_result['code']
         
+        # SECURITY FIX: Strip any import statements from generated code
+        # Imports are disabled for security, all needed imports are pre-loaded in executor
+        lines = code.split('\n')
+        filtered_lines = [
+            line for line in lines 
+            if not line.strip().startswith('import ') and not line.strip().startswith('from ')
+        ]
+        code = '\n'.join(filtered_lines).strip()
+        
+        logger.info(f"Code after security filtering: {len(code)} chars")
+        
         # Validate code syntax
         code_validation = GeminiHandler.validate_code(code)
         
-        # Safety check
-        is_safe, safety_msg = executor.validate_code_safety(code)
-        safety_risks = [safety_msg] if not is_safe else []
+        # Check for forbidden patterns (safety)
+        safety_check = CodeExecutor.validate_code_safety(code)
+        is_safe = safety_check[0]
+        
+        if not is_safe:
+            safety_risks = [safety_check[1]]
+        else:
+            safety_risks = []
         
         # Combine risks
         all_risks = gen_result.get('risks', []) + safety_risks
-        
-        # Store code in session
-        if session_id in session_manager.sessions:
-            session_manager.sessions[session_id]['files'][file_id]['last_code'] = code
         
         # Record operation
         session_manager.record_operation(session_id, {
@@ -100,7 +144,10 @@ def analyze():
             'code_generated': True
         })
         
-        logger.info(f"✅ Analysis complete: {len(code)} chars generated")
+        # Store code in session for later execution
+        session_manager.sessions[session_id]['files'][file_id]['last_code'] = code
+        
+        logger.info(f"✅ Analysis complete: {len(code)} chars of code generated")
         
         return jsonify({
             'success': True,
@@ -109,9 +156,14 @@ def analyze():
             'risks': all_risks,
             'estimated_rows_affected': gen_result.get('estimated_rows_affected', 'unknown'),
             'code_valid': code_validation['valid'],
-            'is_safe': is_safe
+            'code_syntax_error': code_validation.get('error', None) if not code_validation['valid'] else None,
+            'is_safe': is_safe,
+            'safety_warning': safety_check[1] if not is_safe else None
         }), 200
     
     except Exception as e:
         logger.error(f"❌ Analyze error: {str(e)}")
-        return jsonify({'success': False, 'error': f'Analysis failed: {str(e)}'}), 500
+        return jsonify({
+            'success': False,
+            'error': f'Analysis failed: {str(e)}'
+        }), 500
